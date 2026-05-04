@@ -19,8 +19,8 @@ function updateDashboard(data) {
     document.getElementById('disk-usage').textContent = data.disk.toFixed(1) + '%';
     
     // Update network stats
-    document.getElementById('net-sent').textContent = (data.network.sent / 1024).toFixed(0) + ' KB';
-    document.getElementById('net-recv').textContent = (data.network.received / 1024).toFixed(0) + ' KB';
+    document.getElementById('net-sent').textContent = data.network.sent_mbps.toFixed(2) + ' Mbps';
+    document.getElementById('net-recv').textContent = data.network.received_mbps.toFixed(2) + ' Mbps';
     
     // Update processes
     const processList = document.getElementById('process-list');

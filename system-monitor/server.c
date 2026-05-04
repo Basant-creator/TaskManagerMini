@@ -113,25 +113,47 @@ double get_disk_usage() {
     return 0.0;
 }
 
-void get_network_usage(ULONGLONG *sent, ULONGLONG *received) {
-    *sent = 0;
-    *received = 0;
+ULONGLONG prev_net_sent = 0;
+ULONGLONG prev_net_recv = 0;
+ULONGLONG prev_net_time = 0;
+double last_sent_mbps = 0.0;
+double last_recv_mbps = 0.0;
+
+void get_network_usage(double *sent_mbps, double *recv_mbps) {
     ULONG dwSize = 0;
     if (GetIfTable(NULL, &dwSize, 0) == ERROR_INSUFFICIENT_BUFFER) {
         MIB_IFTABLE *pIfTable = (MIB_IFTABLE *)malloc(dwSize);
         if (pIfTable != NULL) {
             if (GetIfTable(pIfTable, &dwSize, 0) == NO_ERROR) {
+                ULONGLONG rx_bytes = 0;
+                ULONGLONG tx_bytes = 0;
                 for (DWORD i = 0; i < pIfTable->dwNumEntries; i++) {
                     MIB_IFROW *row = &pIfTable->table[i];
                     if (row->dwType != IF_TYPE_SOFTWARE_LOOPBACK) {
-                        *received += row->dwInOctets;
-                        *sent += row->dwOutOctets;
+                        rx_bytes += row->dwInOctets;
+                        tx_bytes += row->dwOutOctets;
                     }
                 }
+                
+                ULONGLONG current_time = GetTickCount64();
+                if (prev_net_time != 0) {
+                    ULONGLONG time_diff = current_time - prev_net_time;
+                    if (time_diff > 0) {
+                        last_recv_mbps = (double)(rx_bytes - prev_net_recv) * 8.0 / 1000000.0 / (time_diff / 1000.0);
+                        last_sent_mbps = (double)(tx_bytes - prev_net_sent) * 8.0 / 1000000.0 / (time_diff / 1000.0);
+                        if (last_recv_mbps < 0) last_recv_mbps = 0;
+                        if (last_sent_mbps < 0) last_sent_mbps = 0;
+                    }
+                }
+                prev_net_recv = rx_bytes;
+                prev_net_sent = tx_bytes;
+                prev_net_time = current_time;
             }
             free(pIfTable);
         }
     }
+    *sent_mbps = last_sent_mbps;
+    *recv_mbps = last_recv_mbps;
 }
 
 void update_top_processes(ULARGE_INTEGER sys_diff, Process top5[5]) {
@@ -235,8 +257,8 @@ void generate_json_response(char *buffer, size_t max_len) {
     double mem = get_memory_usage();
     double disk = get_disk_usage();
     
-    ULONGLONG net_sent, net_recv;
-    get_network_usage(&net_sent, &net_recv);
+    double net_sent_mbps, net_recv_mbps;
+    get_network_usage(&net_sent_mbps, &net_recv_mbps);
     
     Process top5[5];
     update_top_processes(sys_diff, top5);
@@ -268,14 +290,14 @@ void generate_json_response(char *buffer, size_t max_len) {
         "  \"memory\": %.1f,\n"
         "  \"disk\": %.1f,\n"
         "  \"network\": {\n"
-        "    \"sent\": %llu,\n"
-        "    \"received\": %llu\n"
+        "    \"sent_mbps\": %.2f,\n"
+        "    \"received_mbps\": %.2f\n"
         "  },\n"
         "  \"processes\": [\n"
         "%s"
         "  ]\n"
         "}",
-        cpu, mem, disk, net_sent, net_recv, proc_json);
+        cpu, mem, disk, net_sent_mbps, net_recv_mbps, proc_json);
 }
 
 void handle_client(SOCKET client_socket) {

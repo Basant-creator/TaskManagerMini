@@ -106,6 +106,10 @@ void print_disk_usage() {
     }
 }
 
+ULONGLONG prev_net_sent = 0;
+ULONGLONG prev_net_recv = 0;
+ULONGLONG prev_net_time = 0;
+
 void print_network_usage() {
     ULONG dwSize = 0;
     if (GetIfTable(NULL, &dwSize, 0) == ERROR_INSUFFICIENT_BUFFER) {
@@ -121,7 +125,23 @@ void print_network_usage() {
                         tx_bytes += row->dwOutOctets;
                     }
                 }
-                printf("Network: Sent: %llu KB | Received: %llu KB\n", tx_bytes / 1024, rx_bytes / 1024);
+                
+                ULONGLONG current_time = GetTickCount64();
+                if (prev_net_time != 0) {
+                    ULONGLONG time_diff = current_time - prev_net_time;
+                    if (time_diff > 0) {
+                        double rx_mbps = (double)(rx_bytes - prev_net_recv) * 8.0 / 1000000.0 / (time_diff / 1000.0);
+                        double tx_mbps = (double)(tx_bytes - prev_net_sent) * 8.0 / 1000000.0 / (time_diff / 1000.0);
+                        if (rx_mbps < 0) rx_mbps = 0;
+                        if (tx_mbps < 0) tx_mbps = 0;
+                        printf("Network Speed: Upload: %.2f Mbps | Download: %.2f Mbps\n", tx_mbps, rx_mbps);
+                    }
+                } else {
+                    printf("Network Speed: Calculating...\n");
+                }
+                prev_net_recv = rx_bytes;
+                prev_net_sent = tx_bytes;
+                prev_net_time = current_time;
             } else {
                 printf("Network: Error reading stats\n");
             }
