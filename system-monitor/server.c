@@ -1,6 +1,8 @@
 #define _WIN32_WINNT 0x0600
 #define WINVER 0x0600
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <psapi.h>
 #include <iphlpapi.h>
@@ -9,13 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-#endif
-
+#pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "psapi.lib")
 
+#define PORT 8080
+#define BUFFER_SIZE 4096
 #define MAX_TRACKED_PIDS 2048
 
 typedef struct {
@@ -34,6 +35,8 @@ int tracked_process_count = 0;
 
 ULARGE_INTEGER prev_sys_idle, prev_sys_kernel, prev_sys_user;
 int num_cores = 1;
+double last_cpu_usage = 0.0;
+Process last_top5[5] = {0};
 
 void init_system_info() {
     SYSTEM_INFO sysInfo;
@@ -53,7 +56,7 @@ void init_system_info() {
 
 double get_cpu_usage(ULARGE_INTEGER *sys_diff_out) {
     FILETIME ftime, fsys, fuser;
-    if (!GetSystemTimes(&ftime, &fsys, &fuser)) return 0.0;
+    if (!GetSystemTimes(&ftime, &fsys, &fuser)) return last_cpu_usage;
 
     ULARGE_INTEGER current_idle, current_kernel, current_user;
     current_idle.LowPart = ftime.dwLowDateTime;
@@ -69,75 +72,71 @@ double get_cpu_usage(ULARGE_INTEGER *sys_diff_out) {
 
     ULONGLONG total_diff = kernel_diff + user_diff;
 
+    sys_diff_out->QuadPart = total_diff;
+
+    if (total_diff == 0) return last_cpu_usage;
+
     prev_sys_idle = current_idle;
     prev_sys_kernel = current_kernel;
     prev_sys_user = current_user;
-
-    sys_diff_out->QuadPart = total_diff;
-
-    if (total_diff == 0) return 0.0;
     
     double usage = (double)(total_diff - idle_diff) * 100.0 / (double)total_diff;
     if (usage < 0.0) usage = 0.0;
+    
+    last_cpu_usage = usage;
     return usage;
 }
 
-void print_memory_usage() {
+double get_memory_usage() {
     MEMORYSTATUSEX memInfo;
     memInfo.dwLength = sizeof(MEMORYSTATUSEX);
     if (GlobalMemoryStatusEx(&memInfo)) {
-        double gb_total = memInfo.ullTotalPhys / 1073741824.0;
-        double gb_avail = memInfo.ullAvailPhys / 1073741824.0;
-        double gb_used = gb_total - gb_avail;
-        printf("Memory Usage: %.2f GB / %.2f GB (%.1f%%)\n", gb_used, gb_total, (double)memInfo.dwMemoryLoad);
-    } else {
-        printf("Memory Usage: N/A\n");
+        return (double)memInfo.dwMemoryLoad; // Percentage
     }
+    return 0.0;
 }
 
-void print_disk_usage() {
+double get_disk_usage() {
     ULARGE_INTEGER freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes;
     if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalNumberOfBytes, &totalNumberOfFreeBytes)) {
         ULONGLONG used = totalNumberOfBytes.QuadPart - totalNumberOfFreeBytes.QuadPart;
-        double pct = ((double)used / (double)totalNumberOfBytes.QuadPart) * 100.0;
-        printf("Disk Usage (C:\\): %.1f%%\n", pct);
-    } else {
-        printf("Disk Usage (C:\\): N/A\n");
+        return ((double)used / (double)totalNumberOfBytes.QuadPart) * 100.0;
     }
+    return 0.0;
 }
 
-void print_network_usage() {
+void get_network_usage(ULONGLONG *sent, ULONGLONG *received) {
+    *sent = 0;
+    *received = 0;
     ULONG dwSize = 0;
     if (GetIfTable(NULL, &dwSize, 0) == ERROR_INSUFFICIENT_BUFFER) {
         MIB_IFTABLE *pIfTable = (MIB_IFTABLE *)malloc(dwSize);
         if (pIfTable != NULL) {
             if (GetIfTable(pIfTable, &dwSize, 0) == NO_ERROR) {
-                ULONGLONG rx_bytes = 0;
-                ULONGLONG tx_bytes = 0;
                 for (DWORD i = 0; i < pIfTable->dwNumEntries; i++) {
                     MIB_IFROW *row = &pIfTable->table[i];
                     if (row->dwType != IF_TYPE_SOFTWARE_LOOPBACK) {
-                        rx_bytes += row->dwInOctets;
-                        tx_bytes += row->dwOutOctets;
+                        *received += row->dwInOctets;
+                        *sent += row->dwOutOctets;
                     }
                 }
-                printf("Network: Sent: %llu KB | Received: %llu KB\n", tx_bytes / 1024, rx_bytes / 1024);
-            } else {
-                printf("Network: Error reading stats\n");
             }
             free(pIfTable);
         }
-    } else {
-        printf("Network: Error determining size\n");
     }
 }
 
-void print_top_processes(ULARGE_INTEGER sys_diff) {
+void update_top_processes(ULARGE_INTEGER sys_diff, Process top5[5]) {
+    memset(top5, 0, 5 * sizeof(Process));
+    if (sys_diff.QuadPart == 0) {
+        memcpy(top5, last_top5, 5 * sizeof(Process));
+        return;
+    }
+
     DWORD aProcesses[2048], cbNeeded, cProcesses;
     if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded)) return;
     
     cProcesses = cbNeeded / sizeof(DWORD);
-    Process top5[5] = {0};
     
     ProcessTracker new_tracked[MAX_TRACKED_PIDS];
     int new_tracked_count = 0;
@@ -169,7 +168,7 @@ void print_top_processes(ULARGE_INTEGER sys_diff) {
                 }
                 
                 double usage = 0.0;
-                if (prev_proc_ticks.QuadPart != 0 && sys_diff.QuadPart > 0) {
+                if (prev_proc_ticks.QuadPart != 0) {
                     ULONGLONG proc_diff = 0;
                     if (proc_ticks.QuadPart >= prev_proc_ticks.QuadPart) {
                         proc_diff = proc_ticks.QuadPart - prev_proc_ticks.QuadPart;
@@ -217,42 +216,145 @@ void print_top_processes(ULARGE_INTEGER sys_diff) {
     
     memcpy(tracked_processes, new_tracked, new_tracked_count * sizeof(ProcessTracker));
     tracked_process_count = new_tracked_count;
+    memcpy(last_top5, top5, 5 * sizeof(Process));
+}
 
-    printf("Top Processes:\n\n");
+void generate_json_response(char *buffer, size_t max_len) {
+    ULARGE_INTEGER sys_diff;
+    sys_diff.QuadPart = 0;
+    
+    double cpu = get_cpu_usage(&sys_diff);
+    double mem = get_memory_usage();
+    double disk = get_disk_usage();
+    
+    ULONGLONG net_sent, net_recv;
+    get_network_usage(&net_sent, &net_recv);
+    
+    Process top5[5];
+    update_top_processes(sys_diff, top5);
+
+    char proc_json[2048] = "";
+    int offset = 0;
+    
     for (int i = 0; i < 5; i++) {
-        if (top5[i].pid > 0) {
-            printf("%d. %s (%lu) - %.1f%%\n", i + 1, top5[i].name, top5[i].pid, top5[i].usage);
+        if (top5[i].pid == 0) continue;
+        
+        char clean_name[256];
+        int j = 0;
+        for (int k = 0; top5[i].name[k] != '\0' && j < 255; k++) {
+            if (top5[i].name[k] == '"' || top5[i].name[k] == '\\') {
+                clean_name[j++] = '\\';
+            }
+            clean_name[j++] = top5[i].name[k];
+        }
+        clean_name[j] = '\0';
+        
+        offset += snprintf(proc_json + offset, sizeof(proc_json) - offset,
+            "    {\"name\": \"%s\", \"pid\": %lu, \"cpu\": %.1f}%s\n",
+            clean_name, top5[i].pid, top5[i].usage, (i < 4 && top5[i+1].pid != 0) ? "," : "");
+    }
+
+    snprintf(buffer, max_len,
+        "{\n"
+        "  \"cpu\": %.1f,\n"
+        "  \"memory\": %.1f,\n"
+        "  \"disk\": %.1f,\n"
+        "  \"network\": {\n"
+        "    \"sent\": %llu,\n"
+        "    \"received\": %llu\n"
+        "  },\n"
+        "  \"processes\": [\n"
+        "%s"
+        "  ]\n"
+        "}",
+        cpu, mem, disk, net_sent, net_recv, proc_json);
+}
+
+void handle_client(SOCKET client_socket) {
+    char buffer[BUFFER_SIZE];
+    int bytes_read = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+    
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0';
+        
+        if (strncmp(buffer, "GET /stats", 10) == 0) {
+            char json_payload[BUFFER_SIZE];
+            generate_json_response(json_payload, sizeof(json_payload));
+            
+            char http_response[BUFFER_SIZE * 2];
+            snprintf(http_response, sizeof(http_response),
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "Connection: close\r\n"
+                "Content-Length: %zu\r\n"
+                "\r\n"
+                "%s",
+                strlen(json_payload), json_payload);
+                
+            send(client_socket, http_response, (int)strlen(http_response), 0);
+            printf("Served /stats request successfully.\n");
+        } else {
+            const char *not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(client_socket, not_found, (int)strlen(not_found), 0);
+            printf("Served 404 for unknown path.\n");
         }
     }
+    
+    closesocket(client_socket);
 }
 
 int main() {
     init_system_info();
-
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD dwMode = 0;
-    GetConsoleMode(hOut, &dwMode);
-    SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-
-    while (1) {
-        printf("\033[H\033[J");
-        fflush(stdout);
-
-        ULARGE_INTEGER sys_diff;
-        sys_diff.QuadPart = 0;
-        double cpu_usage = get_cpu_usage(&sys_diff);
-
-        printf("---\n\n");
-        printf("CPU Usage: %.1f%%\n", cpu_usage);
-        print_memory_usage();
-        print_disk_usage();
-        print_network_usage();
-        printf("----------------------------------------\n\n");
-
-        print_top_processes(sys_diff);
-
-        Sleep(1000);
+    
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        printf("Failed to initialize Winsock.\n");
+        return 1;
     }
-
+    
+    SOCKET server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server_socket == INVALID_SOCKET) {
+        printf("Failed to create socket.\n");
+        WSACleanup();
+        return 1;
+    }
+    
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server_addr.sin_port = htons(PORT);
+    
+    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
+        printf("Bind failed on port %d.\n", PORT);
+        closesocket(server_socket);
+        WSACleanup();
+        return 1;
+    }
+    
+    if (listen(server_socket, SOMAXCONN) == SOCKET_ERROR) {
+        printf("Listen failed.\n");
+        closesocket(server_socket);
+        WSACleanup();
+        return 1;
+    }
+    
+    printf("HTTP Server running on http://127.0.0.1:%d/\n", PORT);
+    printf("Endpoint available at http://127.0.0.1:%d/stats\n", PORT);
+    
+    while (1) {
+        struct sockaddr_in client_addr;
+        int client_size = sizeof(client_addr);
+        SOCKET client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_size);
+        
+        if (client_socket == INVALID_SOCKET) {
+            printf("Accept failed.\n");
+            continue;
+        }
+        
+        handle_client(client_socket);
+    }
+    
+    closesocket(server_socket);
+    WSACleanup();
     return 0;
 }
