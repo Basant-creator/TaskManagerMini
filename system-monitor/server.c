@@ -240,7 +240,8 @@ void update_top_processes(ULARGE_INTEGER sys_diff, Process top10[10]) {
                     if (proc_ticks.QuadPart >= prev_proc_ticks.QuadPart) {
                         proc_diff = proc_ticks.QuadPart - prev_proc_ticks.QuadPart;
                     }
-                    usage = 100.0 * num_cores * (double)proc_diff / (double)sys_diff.QuadPart;
+                    usage = 100.0 * (double)proc_diff / (double)sys_diff.QuadPart;
+                    if (usage > 100.0) usage = 100.0;
                 }
                 
                 if (new_tracked_count < MAX_TRACKED_PIDS) {
