@@ -127,6 +127,12 @@ async function fetchStats() {
 }
 
 function updateUI(data) {
+    if (data.system) {
+        document.getElementById('hw-cpu').textContent = `↳ ${data.system.cpu_model}`;
+        document.getElementById('hw-mem').textContent = `↳ Total RAM: ${data.system.total_ram_gb.toFixed(1)} GB`;
+        document.getElementById('hw-disk').textContent = `↳ Total Space: ${data.system.total_disk_gb.toFixed(1)} GB`;
+    }
+
     const cpuEl = document.getElementById('cpu-usage');
     const memEl = document.getElementById('mem-usage');
     const diskEl = document.getElementById('disk-usage');

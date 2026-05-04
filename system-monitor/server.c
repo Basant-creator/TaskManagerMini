@@ -19,6 +19,10 @@
 #define NO_ERROR 0
 #endif
 
+#ifndef ERROR_SUCCESS
+#define ERROR_SUCCESS 0
+#endif
+
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "psapi.lib")
@@ -47,6 +51,10 @@ int num_cores = 1;
 double last_cpu_usage = 0.0;
 Process last_top10[10] = {0};
 
+char sys_cpu_model[256] = "Unknown CPU";
+double sys_total_ram = 0.0;
+double sys_total_disk = 0.0;
+
 void init_system_info() {
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
@@ -61,6 +69,34 @@ void init_system_info() {
     prev_sys_kernel.HighPart = fsys.dwHighDateTime;
     prev_sys_user.LowPart = fuser.dwLowDateTime;
     prev_sys_user.HighPart = fuser.dwHighDateTime;
+
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        sys_total_ram = (double)memInfo.ullTotalPhys / (1024.0 * 1024.0 * 1024.0);
+    }
+
+    ULARGE_INTEGER freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes;
+    if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalNumberOfBytes, &totalNumberOfFreeBytes)) {
+        sys_total_disk = (double)totalNumberOfBytes.QuadPart / (1024.0 * 1024.0 * 1024.0);
+    }
+
+    HKEY hKey;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD type;
+        DWORD size = sizeof(sys_cpu_model);
+        if (RegQueryValueExA(hKey, "ProcessorNameString", NULL, &type, (LPBYTE)sys_cpu_model, &size) != ERROR_SUCCESS) {
+            strncpy(sys_cpu_model, "Unknown CPU", sizeof(sys_cpu_model));
+        } else {
+            // Trim trailing spaces if any
+            int i = strlen(sys_cpu_model) - 1;
+            while(i >= 0 && sys_cpu_model[i] == ' ') {
+                sys_cpu_model[i] = '\0';
+                i--;
+            }
+        }
+        RegCloseKey(hKey);
+    }
 }
 
 double get_cpu_usage(ULARGE_INTEGER *sys_diff_out) {
@@ -293,6 +329,11 @@ void generate_json_response(char *buffer, size_t max_len) {
 
     snprintf(buffer, max_len,
         "{\n"
+        "  \"system\": {\n"
+        "    \"cpu_model\": \"%s\",\n"
+        "    \"total_ram_gb\": %.1f,\n"
+        "    \"total_disk_gb\": %.1f\n"
+        "  },\n"
         "  \"cpu\": %.1f,\n"
         "  \"memory\": %.1f,\n"
         "  \"disk\": %.1f,\n"
@@ -304,7 +345,7 @@ void generate_json_response(char *buffer, size_t max_len) {
         "%s"
         "  ]\n"
         "}",
-        cpu, mem, disk, net_sent_mbps, net_recv_mbps, proc_json);
+        sys_cpu_model, sys_total_ram, sys_total_disk, cpu, mem, disk, net_sent_mbps, net_recv_mbps, proc_json);
 }
 
 void handle_client(SOCKET client_socket) {
