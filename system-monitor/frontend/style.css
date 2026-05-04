@@ -50,3 +50,18 @@ span {
 .log-entry {
     white-space: pre-wrap;
 }
+
+.warning {
+    color: #ff5555;
+    font-weight: bold;
+}
+
+.disconnected {
+    color: #ff5555;
+    font-weight: bold;
+}
+
+.connected {
+    color: #55ff55;
+    font-weight: bold;
+}
