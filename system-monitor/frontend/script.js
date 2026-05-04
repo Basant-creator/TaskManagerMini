@@ -1,5 +1,71 @@
 const API_URL = 'http://127.0.0.1:8080/stats';
 
+let cpuData = [];
+let memoryData = [];
+let labels = [];
+
+let cpuChart = null;
+let memChart = null;
+
+function initCharts() {
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+            duration: 400
+        },
+        scales: {
+            x: {
+                grid: { color: '#333' },
+                ticks: { color: '#e0e0e0', maxTicksLimit: 5 }
+            },
+            y: {
+                min: 0,
+                max: 100,
+                grid: { color: '#333' },
+                ticks: { color: '#e0e0e0' }
+            }
+        },
+        plugins: {
+            legend: { display: false }
+        },
+        elements: {
+            line: { tension: 0.4, borderWidth: 2 },
+            point: { radius: 0 }
+        }
+    };
+
+    const cpuCtx = document.getElementById('cpu-chart').getContext('2d');
+    cpuChart = new Chart(cpuCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: cpuData,
+                borderColor: '#55ff55',
+                backgroundColor: 'rgba(85, 255, 85, 0.1)',
+                fill: true
+            }]
+        },
+        options: commonOptions
+    });
+
+    const memCtx = document.getElementById('mem-chart').getContext('2d');
+    memChart = new Chart(memCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: memoryData,
+                borderColor: '#55ff55',
+                backgroundColor: 'rgba(85, 255, 85, 0.1)',
+                fill: true
+            }]
+        },
+        options: commonOptions
+    });
+}
+
 async function fetchStats() {
     try {
         const response = await fetch(API_URL);
@@ -17,7 +83,9 @@ async function fetchStats() {
         const now = new Date();
         document.getElementById('last-updated').textContent = now.toLocaleTimeString();
 
-        updateDashboard(data);
+        updateUI(data);
+        updateCharts(data);
+        updateAlerts(data);
     } catch (error) {
         const statusEl = document.getElementById('conn-status');
         if (statusEl.textContent !== 'Disconnected') {
@@ -38,7 +106,7 @@ async function fetchStats() {
     }
 }
 
-function updateDashboard(data) {
+function updateUI(data) {
     const cpuEl = document.getElementById('cpu-usage');
     const memEl = document.getElementById('mem-usage');
     const diskEl = document.getElementById('disk-usage');
@@ -48,8 +116,8 @@ function updateDashboard(data) {
     diskEl.textContent = data.disk.toFixed(1) + '%';
 
     cpuEl.className = data.cpu > 85 ? 'warning' : '';
-    memEl.className = data.memory > 85 ? 'warning' : '';
-    diskEl.className = data.disk > 85 ? 'warning' : '';
+    memEl.className = data.memory > 90 ? 'warning' : '';
+    diskEl.className = data.disk > 90 ? 'warning' : '';
     
     document.getElementById('net-sent').textContent = data.network.sent_mbps.toFixed(2) + ' Mbps';
     document.getElementById('net-recv').textContent = data.network.received_mbps.toFixed(2) + ' Mbps';
@@ -84,6 +152,38 @@ function updateDashboard(data) {
     }
 }
 
+function updateCharts(data) {
+    const now = new Date();
+    const timeLabel = now.toLocaleTimeString();
+
+    labels.push(timeLabel);
+    cpuData.push(data.cpu);
+    memoryData.push(data.memory);
+
+    if (labels.length > 20) {
+        labels.shift();
+        cpuData.shift();
+        memoryData.shift();
+    }
+
+    if (cpuChart && memChart) {
+        cpuChart.update();
+        memChart.update();
+    }
+}
+
+function updateAlerts(data) {
+    if (data.cpu > 85) {
+        logAlert(`[WARNING] High CPU usage: ${data.cpu.toFixed(1)}%`);
+    }
+    if (data.memory > 90) {
+        logAlert(`[WARNING] High Memory usage: ${data.memory.toFixed(1)}%`);
+    }
+    if (data.disk > 90) {
+        logAlert(`[WARNING] High Disk usage: ${data.disk.toFixed(1)}%`);
+    }
+}
+
 function logAlert(message) {
     const alertsContainer = document.getElementById('alerts-container');
     const logEntry = document.createElement('div');
@@ -100,4 +200,5 @@ function logAlert(message) {
 }
 
 setInterval(fetchStats, 1000);
+initCharts();
 fetchStats();

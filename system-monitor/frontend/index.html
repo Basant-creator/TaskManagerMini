@@ -16,7 +16,13 @@
 
         <section class="box-section">
             <div class="stat-row">| CPU Usage: <span id="cpu-usage">--%</span></div>
+            <div class="chart-container">
+                <canvas id="cpu-chart"></canvas>
+            </div>
             <div class="stat-row">| Memory Usage: <span id="mem-usage">--%</span></div>
+            <div class="chart-container">
+                <canvas id="mem-chart"></canvas>
+            </div>
             <div class="stat-row">| Disk Usage: <span id="disk-usage">--%</span></div>
         </section>
 
@@ -46,6 +52,7 @@
         </section>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
