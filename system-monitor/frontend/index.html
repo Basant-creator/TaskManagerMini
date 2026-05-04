@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitor Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>| SYSTEM MONITOR DASHBOARD       |</h1>
+        </header>
+
+        <section class="box-section">
+            <div class="stat-row">| CPU Usage: <span id="cpu-usage">--%</span></div>
+            <div class="stat-row">| Memory Usage: <span id="mem-usage">--%</span></div>
+            <div class="stat-row">| Disk Usage: <span id="disk-usage">--%</span></div>
+        </section>
+
+        <div class="separator">---------------------------------</div>
+
+        <section class="box-section">
+            <div class="stat-row">| Network:</div>
+            <div class="stat-row">| Sent: <span id="net-sent">-- KB</span></div>
+            <div class="stat-row">| Received: <span id="net-recv">-- KB</span></div>
+        </section>
+
+        <div class="separator">---------------------------------</div>
+
+        <section class="box-section">
+            <div class="stat-row">| Top Processes:</div>
+            <div id="process-list">
+                <div class="stat-row">| 1. loading...</div>
+            </div>
+        </section>
+
+        <div class="separator">---------------------------------</div>
+
+        <section class="box-section">
+            <div class="stat-row">| Alerts / Logs Section</div>
+            <div class="log-entry">| > Connection established. Monitoring started.</div>
+            <div id="alerts-container"></div>
+        </section>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
