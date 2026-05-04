@@ -31,6 +31,7 @@ typedef struct {
     DWORD pid;
     char name[256];
     double usage;
+    double memory_mb;
 } Process;
 
 typedef struct {
@@ -44,7 +45,7 @@ int tracked_process_count = 0;
 ULARGE_INTEGER prev_sys_idle, prev_sys_kernel, prev_sys_user;
 int num_cores = 1;
 double last_cpu_usage = 0.0;
-Process last_top5[5] = {0};
+Process last_top10[10] = {0};
 
 void init_system_info() {
     SYSTEM_INFO sysInfo;
@@ -156,10 +157,10 @@ void get_network_usage(double *sent_mbps, double *recv_mbps) {
     *recv_mbps = last_recv_mbps;
 }
 
-void update_top_processes(ULARGE_INTEGER sys_diff, Process top5[5]) {
-    memset(top5, 0, 5 * sizeof(Process));
+void update_top_processes(ULARGE_INTEGER sys_diff, Process top10[10]) {
+    memset(top10, 0, 10 * sizeof(Process));
     if (sys_diff.QuadPart == 0) {
-        memcpy(top5, last_top5, 5 * sizeof(Process));
+        memcpy(top10, last_top10, 10 * sizeof(Process));
         return;
     }
 
@@ -226,16 +227,22 @@ void update_top_processes(ULARGE_INTEGER sys_diff, Process top5[5]) {
                     }
                 }
                 
-                Process p = {pid, "", usage};
+                double memory_mb = 0.0;
+                PROCESS_MEMORY_COUNTERS pmc;
+                if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+                    memory_mb = (double)pmc.WorkingSetSize / (1024.0 * 1024.0);
+                }
+                
+                Process p = {pid, "", usage, memory_mb};
                 strncpy(p.name, szProcessName, sizeof(p.name) - 1);
                 p.name[sizeof(p.name) - 1] = '\0';
 
-                for (int k = 0; k < 5; k++) {
-                    if (p.usage > top5[k].usage) {
-                        for (int j = 4; j > k; j--) {
-                            top5[j] = top5[j - 1];
+                for (int k = 0; k < 10; k++) {
+                    if (p.memory_mb > top10[k].memory_mb) {
+                        for (int j = 9; j > k; j--) {
+                            top10[j] = top10[j - 1];
                         }
-                        top5[k] = p;
+                        top10[k] = p;
                         break;
                     }
                 }
@@ -246,7 +253,7 @@ void update_top_processes(ULARGE_INTEGER sys_diff, Process top5[5]) {
     
     memcpy(tracked_processes, new_tracked, new_tracked_count * sizeof(ProcessTracker));
     tracked_process_count = new_tracked_count;
-    memcpy(last_top5, top5, 5 * sizeof(Process));
+    memcpy(last_top10, top10, 10 * sizeof(Process));
 }
 
 void generate_json_response(char *buffer, size_t max_len) {
@@ -260,28 +267,28 @@ void generate_json_response(char *buffer, size_t max_len) {
     double net_sent_mbps, net_recv_mbps;
     get_network_usage(&net_sent_mbps, &net_recv_mbps);
     
-    Process top5[5];
-    update_top_processes(sys_diff, top5);
+    Process top10[10];
+    update_top_processes(sys_diff, top10);
 
-    char proc_json[2048] = "";
+    char proc_json[4096] = "";
     int offset = 0;
     
-    for (int i = 0; i < 5; i++) {
-        if (top5[i].pid == 0) continue;
+    for (int i = 0; i < 10; i++) {
+        if (top10[i].pid == 0) continue;
         
         char clean_name[256];
         int j = 0;
-        for (int k = 0; top5[i].name[k] != '\0' && j < 255; k++) {
-            if (top5[i].name[k] == '"' || top5[i].name[k] == '\\') {
+        for (int k = 0; top10[i].name[k] != '\0' && j < 255; k++) {
+            if (top10[i].name[k] == '"' || top10[i].name[k] == '\\') {
                 clean_name[j++] = '\\';
             }
-            clean_name[j++] = top5[i].name[k];
+            clean_name[j++] = top10[i].name[k];
         }
         clean_name[j] = '\0';
         
         offset += snprintf(proc_json + offset, sizeof(proc_json) - offset,
-            "    {\"name\": \"%s\", \"pid\": %lu, \"cpu\": %.1f}%s\n",
-            clean_name, top5[i].pid, top5[i].usage, (i < 4 && top5[i+1].pid != 0) ? "," : "");
+            "    {\"name\": \"%s\", \"pid\": %lu, \"cpu\": %.1f, \"memory_mb\": %.1f}%s\n",
+            clean_name, top10[i].pid, top10[i].usage, top10[i].memory_mb, (i < 9 && top10[i+1].pid != 0) ? "," : "");
     }
 
     snprintf(buffer, max_len,
@@ -324,8 +331,28 @@ void handle_client(SOCKET client_socket) {
                 
             send(client_socket, http_response, (int)strlen(http_response), 0);
             printf("Served /stats request successfully.\n");
+        } else if (strncmp(buffer, "GET /kill?pid=", 14) == 0) {
+            DWORD pid = atoi(buffer + 14);
+            HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+            int success = 0;
+            if (hProc != NULL) {
+                if (TerminateProcess(hProc, 0)) {
+                    success = 1;
+                }
+                CloseHandle(hProc);
+            }
+            char response[512];
+            snprintf(response, sizeof(response),
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "Connection: close\r\n"
+                "Access-Control-Allow-Origin: *\r\n\r\n"
+                "{\"success\": %s, \"pid\": %lu}",
+                success ? "true" : "false", pid);
+            send(client_socket, response, (int)strlen(response), 0);
+            printf("Kill requested for PID %lu. Success: %d\n", pid, success);
         } else {
-            const char *not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            const char *not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n";
             send(client_socket, not_found, (int)strlen(not_found), 0);
             printf("Served 404 for unknown path.\n");
         }

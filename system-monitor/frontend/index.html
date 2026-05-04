@@ -11,45 +11,75 @@
         <header class="dashboard-header">
             <h1>| SYSTEM MONITOR DASHBOARD       |</h1>
             <div class="stat-row">| Status: <span id="conn-status">Connecting...</span></div>
-            <div class="stat-row">| Last Updated: <span id="last-updated">--:--:--</span></div>
+            <div class="stat-row">| Last Updated: <span id="last-updated">--:--</span></div>
+            <div class="separator">--------------------------------------------------------------------------------</div>
         </header>
 
-        <section class="box-section">
-            <div class="stat-row">| CPU Usage: <span id="cpu-usage">--%</span></div>
-            <div class="chart-container">
-                <canvas id="cpu-chart"></canvas>
+        <div class="dashboard-body">
+            <!-- Left Column: Top Processes -->
+            <div class="col-left">
+                <section class="box-section">
+                    <div class="stat-row">| Top Processes:</div>
+                    <div class="separator">--------------------------------------------------</div>
+                    <div class="process-table-header">
+                        <span class="col-name">NAME</span>
+                        <span class="col-pid">PID</span>
+                        <span class="col-cpu">CPU</span>
+                        <span class="col-mem">MEM</span>
+                        <span class="col-act">ACT</span>
+                    </div>
+                    <div class="separator">--------------------------------------------------</div>
+                    <div id="process-list">
+                        <div class="stat-row">| loading...</div>
+                    </div>
+                </section>
             </div>
-            <div class="stat-row">| Memory Usage: <span id="mem-usage">--%</span></div>
-            <div class="chart-container">
-                <canvas id="mem-chart"></canvas>
+
+            <!-- Middle Column: Specs & Alerts -->
+            <div class="col-middle">
+                <section class="box-section">
+                    <div class="stat-row">| System Specs:</div>
+                    <div class="separator">-------------------</div>
+                    <div class="stat-row">| CPU Usage: <span id="cpu-usage">--%</span></div>
+                    <div class="stat-row">| Memory Usage: <span id="mem-usage">--%</span></div>
+                    <div class="stat-row">| Disk Usage: <span id="disk-usage">--%</span></div>
+                </section>
+
+                <section class="box-section" style="margin-top: 20px;">
+                    <div class="stat-row">| Network Speed:</div>
+                    <div class="separator">-------------------</div>
+                    <div class="stat-row">| Upload: <span id="net-sent">-- Mbps</span></div>
+                    <div class="stat-row">| Download: <span id="net-recv">-- Mbps</span></div>
+                </section>
+
+                <section class="box-section" style="margin-top: 20px;">
+                    <div class="stat-row">| Alerts / Logs:</div>
+                    <div class="separator">-------------------</div>
+                    <div class="log-entry">| > Connection established. Monitoring started.</div>
+                    <div id="alerts-container"></div>
+                </section>
             </div>
-            <div class="stat-row">| Disk Usage: <span id="disk-usage">--%</span></div>
-        </section>
 
-        <div class="separator">---------------------------------</div>
+            <!-- Right Column: Graphs -->
+            <div class="col-right">
+                <section class="box-section">
+                    <div class="stat-row">| CPU Graph:</div>
+                    <div class="chart-container">
+                        <canvas id="cpu-chart"></canvas>
+                    </div>
+                    
+                    <div class="stat-row">| Memory Graph:</div>
+                    <div class="chart-container">
+                        <canvas id="mem-chart"></canvas>
+                    </div>
 
-        <section class="box-section">
-            <div class="stat-row">| Network Speed:</div>
-            <div class="stat-row">| Upload: <span id="net-sent">-- Mbps</span></div>
-            <div class="stat-row">| Download: <span id="net-recv">-- Mbps</span></div>
-        </section>
-
-        <div class="separator">---------------------------------</div>
-
-        <section class="box-section">
-            <div class="stat-row">| Top Processes:</div>
-            <div id="process-list">
-                <div class="stat-row">| 1. loading...</div>
+                    <div class="stat-row">| Network Graph (Total Mbps):</div>
+                    <div class="chart-container">
+                        <canvas id="net-chart"></canvas>
+                    </div>
+                </section>
             </div>
-        </section>
-
-        <div class="separator">---------------------------------</div>
-
-        <section class="box-section">
-            <div class="stat-row">| Alerts / Logs Section</div>
-            <div class="log-entry">| > Connection established. Monitoring started.</div>
-            <div id="alerts-container"></div>
-        </section>
+        </div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

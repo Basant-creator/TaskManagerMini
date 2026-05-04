@@ -15,10 +15,24 @@ body {
 }
 
 .dashboard-container {
-    max-width: 600px;
+    max-width: 1200px;
     width: 100%;
     border: 1px solid #444;
     padding: 20px;
+}
+
+.dashboard-body {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+
+.col-left, .col-middle {
+    flex: 1;
+}
+
+.col-right {
+    flex: 1.5;
 }
 
 .dashboard-header h1 {
@@ -55,6 +69,33 @@ span {
 
 .log-entry {
     white-space: pre-wrap;
+}
+
+.process-table-header, .process-row {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    padding: 2px 0;
+    align-items: center;
+}
+.process-table-header { font-weight: bold; color: #aaa; }
+.col-name { flex: 4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-pid { flex: 1.5; text-align: right; }
+.col-cpu { flex: 1.5; text-align: right; }
+.col-mem { flex: 2; text-align: right; }
+.col-act { flex: 1.5; text-align: center; }
+
+.kill-btn {
+    background: transparent;
+    color: #ff5555;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+}
+.kill-btn:hover {
+    color: #fff;
+    background: #ff5555;
 }
 
 .warning {
