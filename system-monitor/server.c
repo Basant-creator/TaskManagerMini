@@ -11,6 +11,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef ERROR_INSUFFICIENT_BUFFER
+#define ERROR_INSUFFICIENT_BUFFER 122
+#endif
+
+#ifndef NO_ERROR
+#define NO_ERROR 0
+#endif
+
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "psapi.lib")
