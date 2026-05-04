@@ -115,7 +115,7 @@ double get_disk_usage() {
 
 ULONGLONG prev_net_sent = 0;
 ULONGLONG prev_net_recv = 0;
-ULONGLONG prev_net_time = 0;
+DWORD prev_net_time = 0;
 double last_sent_mbps = 0.0;
 double last_recv_mbps = 0.0;
 
@@ -135,9 +135,9 @@ void get_network_usage(double *sent_mbps, double *recv_mbps) {
                     }
                 }
                 
-                ULONGLONG current_time = GetTickCount64();
+                DWORD current_time = GetTickCount();
                 if (prev_net_time != 0) {
-                    ULONGLONG time_diff = current_time - prev_net_time;
+                    DWORD time_diff = current_time - prev_net_time;
                     if (time_diff > 0) {
                         last_recv_mbps = (double)(rx_bytes - prev_net_recv) * 8.0 / 1000000.0 / (time_diff / 1000.0);
                         last_sent_mbps = (double)(tx_bytes - prev_net_sent) * 8.0 / 1000000.0 / (time_diff / 1000.0);

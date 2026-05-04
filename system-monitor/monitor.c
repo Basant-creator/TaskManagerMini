@@ -108,7 +108,7 @@ void print_disk_usage() {
 
 ULONGLONG prev_net_sent = 0;
 ULONGLONG prev_net_recv = 0;
-ULONGLONG prev_net_time = 0;
+DWORD prev_net_time = 0;
 
 void print_network_usage() {
     ULONG dwSize = 0;
@@ -126,9 +126,9 @@ void print_network_usage() {
                     }
                 }
                 
-                ULONGLONG current_time = GetTickCount64();
+                DWORD current_time = GetTickCount();
                 if (prev_net_time != 0) {
-                    ULONGLONG time_diff = current_time - prev_net_time;
+                    DWORD time_diff = current_time - prev_net_time;
                     if (time_diff > 0) {
                         double rx_mbps = (double)(rx_bytes - prev_net_recv) * 8.0 / 1000000.0 / (time_diff / 1000.0);
                         double tx_mbps = (double)(tx_bytes - prev_net_sent) * 8.0 / 1000000.0 / (time_diff / 1000.0);
